@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parallel Execution Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-main: #1a1a1c;
+    --bg-panel: #232328;
+    --text-primary: #e0e0e4;
+    --text-secondary: #8b8b93;
+    --border-color: #383841;
+    --task-idle: #303036;
+    --task-active: #f1c40f;
+    --task-active-glow: rgba(241, 196, 15, 0.4);
+    --task-done: #00ff88;
+    --task-done-glow: rgba(0, 255, 136, 0.3);
+    --btn-primary: #3498db;
+    --btn-primary-hover: #2980b9;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 32px;
+  }
+
+  /* ── Header ──────────────────────────────────────────────────────── */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 32px;
+  }
+
+  h1 {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: #ffffff;
+  }
+
+  .readouts {
+    display: flex;
+    gap: 32px;
+  }
+
+  .readout-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .readout-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+
+  .readout-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .readout-value.time {
+    color: #00f2fe;
+    text-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
+  }
+
+  /* ── Main Layout ─────────────────────────────────────────────────── */
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+  }
+
+  /* ── Task Grid ───────────────────────────────────────────────────── */
+  .grid-container {
+    background: var(--bg-panel);
+    padding: 24px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 16px 32px rgba(0,0,0,0.4);
+  }
+
+  .task-grid {
+    display: grid;
+    grid-template-columns: repeat(16, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    gap: 10px;
+    width: 100%;
+    max-width: 1200px;
+  }
+
+  .task {
+    aspect-ratio: 1;
+    background-color: var(--task-idle);
+    border-radius: 6px;
+    transition: all 0.15s ease-out;
+  }
+
+  .task.active {
+    background-color: var(--task-active);
+    box-shadow: 0 0 12px var(--task-active-glow);
+    transform: scale(1.05);
+  }
+
+  .task.done {
+    background-color: var(--task-done);
+    box-shadow: 0 0 12px var(--task-done-glow);
+    transform: scale(1);
+  }
+
+  /* ── Control Panel ───────────────────────────────────────────────── */
+  .control-panel {
+    background: var(--bg-panel);
+    padding: 24px 32px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 48px;
+  }
+
+  .slider-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 300px;
+  }
+
+  .slider-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .slider-label span {
+    color: var(--text-primary);
+  }
+
+  /* Custom Slider Range */
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    background: transparent;
+  }
+  input[type=range]:focus {
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 6px;
+    cursor: pointer;
+    background: var(--border-color);
+    border-radius: 3px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    height: 20px;
+    width: 20px;
+    border-radius: 50%;
+    background: var(--text-primary);
+    cursor: pointer;
+    -webkit-appearance: none;
+    margin-top: -7px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    transition: transform 0.1s;
+  }
+  input[type=range]:active::-webkit-slider-thumb {
+    transform: scale(1.2);
+  }
+
+  .slider-marks {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 4px;
+  }
+  .slider-marks span {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .btn {
+    background-color: var(--btn-primary);
+    color: white;
+    border: none;
+    padding: 16px 32px;
+    border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+  }
+
+  .btn:hover:not(:disabled) {
+    background-color: var(--btn-primary-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(52, 152, 219, 0.4);
+  }
+
+  .btn:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  .btn:disabled {
+    background-color: var(--border-color);
+    color: var(--text-secondary);
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
+
+</style>
+</head>
+<body>
+
+  <header>
+    <h1>Parallel Execution Simulator</h1>
+    <div class="readouts">
+      <div class="readout-col">
+        <div class="readout-label">Active Cores</div>
+        <div class="readout-value" id="disp-cores">4</div>
+      </div>
+      <div class="readout-col">
+        <div class="readout-label">Tasks / Core</div>
+        <div class="readout-value" id="disp-tpc">32</div>
+      </div>
+      <div class="readout-col">
+        <div class="readout-label">Time (s)</div>
+        <div class="readout-value time" id="disp-time">0.00</div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid-container">
+      <div class="task-grid" id="task-grid">
+        <!-- 128 elements injected via JS -->
+      </div>
+    </div>
+
+    <div class="control-panel">
+      <div class="slider-group">
+        <div class="slider-label">Hardware Pool <span id="pool-val">4 CORES</span></div>
+        <input type="range" id="core-slider" min="0" max="5" value="2" step="1">
+        <div class="slider-marks">
+          <span>1</span><span>2</span><span>4</span><span>8</span><span>16</span><span>32</span>
+        </div>
+      </div>
+      <button class="btn" id="btn-start">Start Execution</button>
+    </div>
+  </main>
+
+  <script>
+    const TOTAL_TASKS = 128;
+    const CORE_OPTIONS = [1, 2, 4, 8, 16, 32];
+    
+    // The delay it takes for a core to process a single task (ms)
+    // 1-core will take roughly EXACTLY this * 128 to finish.
+    const TASK_TIME_MS = 60; 
+
+    // DOM Elements
+    const grid = document.getElementById('task-grid');
+    const dispCores = document.getElementById('disp-cores');
+    const dispTpc = document.getElementById('disp-tpc');
+    const dispTime = document.getElementById('disp-time');
+    const coreSlider = document.getElementById('core-slider');
+    const poolVal = document.getElementById('pool-val');
+    const btnStart = document.getElementById('btn-start');
+
+    // State
+    let taskElements = [];
+    let isRunning = false;
+    let timerInterval = null;
+    let startTime = 0;
+    
+    // Initialize Grid
+    function initGrid() {
+      grid.innerHTML = '';
+      taskElements = [];
+      for (let i = 0; i < TOTAL_TASKS; i++) {
+        const div = document.createElement('div');
+        div.className = 'task';
+        grid.appendChild(div);
+        taskElements.push(div);
+      }
+    }
+
+    // Reset UI State
+    function resetUI() {
+      taskElements.forEach(t => t.className = 'task');
+      dispTime.textContent = "0.00";
+    }
+
+    // Update readouts based on slider
+    function updateReadouts() {
+      const cores = CORE_OPTIONS[parseInt(coreSlider.value)];
+      const tpc = TOTAL_TASKS / cores;
+      
+      dispCores.textContent = cores;
+      dispTpc.textContent = tpc;
+      poolVal.textContent = `${cores} CORE${cores > 1 ? 'S' : ''}`;
+    }
+
+    // Listen to slider
+    coreSlider.addEventListener('input', () => {
+      if (!isRunning) updateReadouts();
+    });
+
+    // Clock update function
+    function updateClock() {
+      const elapsed = (Date.now() - startTime) / 1000;
+      dispTime.textContent = elapsed.toFixed(2);
+    }
+
+    // Delay helper
+    const delay = ms => new Promise(res => setTimeout(res, ms));
+
+    // Execution Logic
+    async function startExecution() {
+      if (isRunning) return;
+      
+      isRunning = true;
+      btnStart.disabled = true;
+      coreSlider.disabled = true;
+      resetUI();
+      
+      const cores = CORE_OPTIONS[parseInt(coreSlider.value)];
+      
+      // Start Timer
+      startTime = Date.now();
+      timerInterval = setInterval(updateClock, 10);
+      
+      let currentIndex = 0;
+
+      while (currentIndex < TOTAL_TASKS) {
+        // Group the next chunk of tasks based on active cores
+        const chunk = [];
+        for (let i = 0; i < cores && currentIndex < TOTAL_TASKS; i++) {
+          chunk.push(taskElements[currentIndex]);
+          currentIndex++;
+        }
+
+        // 1) Mark chunk as active (yellow)
+        chunk.forEach(t => t.classList.add('active'));
+        
+        // 2) Simulate processing time
+        // Small variance to make it feel natural, but inherently tied to TASK_TIME_MS
+        await delay(TASK_TIME_MS);
+
+        // 3) Mark chunk as completed (green)
+        chunk.forEach(t => {
+          t.classList.remove('active');
+          t.classList.add('done');
+        });
+      }
+
+      // Stop Timer
+      clearInterval(timerInterval);
+      updateClock(); // Final exact time ping
+      
+      isRunning = false;
+      btnStart.disabled = false;
+      btnStart.textContent = "Restart Execution";
+      coreSlider.disabled = false;
+    }
+
+    btnStart.addEventListener('click', startExecution);
+
+    // Initial setup
+    initGrid();
+    updateReadouts();
+
+  </script>
+</body>
+</html>
