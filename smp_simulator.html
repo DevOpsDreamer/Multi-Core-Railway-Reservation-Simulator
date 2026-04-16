@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMP & Mutex Hardware Simulator — Cyberpunk Edition</title>
+<meta name="description" content="Interactive Symmetric Multiprocessing and Mutex Lock simulator with cyberpunk aesthetics. Visualizes race conditions, Check-then-Act patterns, and hardware-level concurrency.">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-primary:    #0b0f19;
+    --bg-panel:      #0f1424;
+    --bg-card:       #141b2d;
+    --border:        #1e2a42;
+    --border-glow:   #1a3a5c;
+    --text-primary:  #c8d6e5;
+    --text-dim:      #556b8a;
+    --text-label:    #8899b2;
+    --neon-blue:     #00b4ff;
+    --neon-green:    #00ff88;
+    --neon-purple:   #b44dff;
+    --neon-orange:   #ff6b1a;
+    --neon-yellow:   #ffe44d;
+    --neon-red:      #ff2244;
+    --neon-cyan:     #00ffe5;
+    --success:       #00ff88;
+    --danger:        #ff2244;
+  }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── HEADER ─────────────────────────────────────────────────── */
+  #header {
+    background: linear-gradient(180deg, #0d1220 0%, var(--bg-primary) 100%);
+    border-bottom: 1px solid var(--border-glow);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    z-index: 10;
+  }
+  #header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    opacity: 0.5;
+  }
+  #header h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, var(--neon-blue), var(--neon-cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 20px rgba(0, 180, 255, 0.3);
+  }
+  #header .subtitle {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .fps-badge {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--neon-green);
+    font-family: 'Orbitron', sans-serif;
+  }
+  .status-led {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--neon-green);
+    box-shadow: 0 0 8px var(--neon-green), 0 0 16px var(--neon-green);
+    animation: led-pulse 2s ease-in-out infinite;
+  }
+  @keyframes led-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* ── MAIN LAYOUT ────────────────────────────────────────────── */
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── CONTROL PANEL ──────────────────────────────────────────── */
+  #panel {
+    width: 310px;
+    min-width: 310px;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border-glow);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow-y: auto;
+    padding-bottom: 12px;
+  }
+  .panel-section {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-section:last-child { border-bottom: none; }
+  .section-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title .dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--neon-cyan);
+    box-shadow: 0 0 6px var(--neon-cyan);
+  }
+
+  /* ── Toggle Switch ──────────────────────────────────────────── */
+  .control-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .control-label {
+    font-size: 12px;
+    color: var(--text-label);
+  }
+  .control-label small {
+    display: block;
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .switch {
+    position: relative;
+    width: 50px;
+    height: 26px;
+    cursor: pointer;
+  }
+  .switch input {
+    opacity: 0; width: 0; height: 0; position: absolute;
+  }
+  .switch .slider {
+    position: absolute;
+    inset: 0;
+    background: #1a2238;
+    border-radius: 13px;
+    border: 1px solid var(--border);
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .switch .slider::before {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    left: 3px; top: 2px;
+    background: var(--text-dim);
+    border-radius: 50%;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 4px rgba(0,0,0,0.4);
+  }
+  .switch input:checked + .slider {
+    background: rgba(0, 255, 136, 0.15);
+    border-color: var(--neon-green);
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.2);
+  }
+  .switch input:checked + .slider::before {
+    transform: translateX(23px);
+    background: var(--neon-green);
+    box-shadow: 0 0 8px var(--neon-green), 0 0 16px rgba(0,255,136,0.3);
+  }
+  .switch.danger input:checked + .slider {
+    background: rgba(255, 34, 68, 0.15);
+    border-color: var(--neon-red);
+    box-shadow: 0 0 12px rgba(255, 34, 68, 0.2);
+  }
+  .switch.danger input:checked + .slider::before {
+    background: var(--neon-red);
+    box-shadow: 0 0 8px var(--neon-red);
+  }
+
+  /* ── Slider ─────────────────────────────────────────────────── */
+  .slider-row {
+    margin-bottom: 14px;
+  }
+  .slider-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+  }
+  .slider-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 8px var(--neon-cyan);
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--neon-cyan);
+    box-shadow: 0 0 10px var(--neon-cyan), 0 0 20px rgba(0,255,229,0.2);
+    border: 2px solid var(--bg-primary);
+    cursor: pointer;
+  }
+
+  /* ── Telemetry Cards ────────────────────────────────────────── */
+  .tele-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .tele-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    position: relative;
+    overflow: hidden;
+  }
+  .tele-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 8px 8px 0 0;
+  }
+  .tele-card.cyan::before    { background: var(--neon-cyan); box-shadow: 0 0 8px var(--neon-cyan); }
+  .tele-card.green::before   { background: var(--neon-green); box-shadow: 0 0 8px var(--neon-green); }
+  .tele-card.red::before     { background: var(--neon-red); box-shadow: 0 0 8px var(--neon-red); }
+  .tele-card.yellow::before  { background: var(--neon-yellow); box-shadow: 0 0 8px var(--neon-yellow); }
+  .tele-card.full { grid-column: 1 / -1; }
+  .tele-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .tele-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--text-primary);
+    text-shadow: 0 0 10px rgba(200, 214, 229, 0.2);
+  }
+  .tele-value.collision-val { color: var(--neon-red); text-shadow: 0 0 14px var(--neon-red); }
+  .tele-value.success-val   { color: var(--neon-green); text-shadow: 0 0 14px var(--neon-green); }
+
+  /* ── Core Status Cards ──────────────────────────────────────── */
+  .core-status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .core-status-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    transition: all 0.3s;
+  }
+  .core-status-card.active {
+    border-color: var(--border-glow);
+  }
+  .core-status-card .led {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: all 0.3s;
+  }
+  .core-status-card .core-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    flex: 1;
+  }
+  .core-status-card .core-state {
+    font-size: 9px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* ── Event Log ──────────────────────────────────────────────── */
+  .log-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  #event-log {
+    flex: 1;
+    overflow-y: auto;
+    font-size: 10px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    max-height: 160px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  #event-log::-webkit-scrollbar { width: 4px; }
+  #event-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .log-entry { padding: 1px 0; }
+  .log-entry .log-time { color: var(--text-dim); }
+  .log-entry.collision { color: var(--neon-red); }
+  .log-entry.success   { color: var(--neon-green); }
+  .log-entry.info      { color: var(--neon-cyan); }
+  .log-entry.warn      { color: var(--neon-yellow); }
+
+  /* ── Buttons ────────────────────────────────────────────────── */
+  .btn-row {
+    display: flex;
+    gap: 8px;
+  }
+  .btn {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-align: center;
+  }
+  .btn:hover {
+    border-color: var(--neon-cyan);
+    background: rgba(0, 255, 229, 0.05);
+    box-shadow: 0 0 12px rgba(0, 255, 229, 0.1);
+  }
+  .btn.primary {
+    border-color: var(--neon-green);
+    color: var(--neon-green);
+  }
+  .btn.primary:hover {
+    background: rgba(0, 255, 136, 0.08);
+    box-shadow: 0 0 14px rgba(0, 255, 136, 0.15);
+  }
+  .btn.danger {
+    border-color: var(--neon-red);
+    color: var(--neon-red);
+  }
+  .btn.danger:hover {
+    background: rgba(255, 34, 68, 0.08);
+    box-shadow: 0 0 14px rgba(255, 34, 68, 0.15);
+  }
+
+  /* ── CANVAS AREA ────────────────────────────────────────────── */
+  #canvas-wrapper {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: var(--bg-primary);
+  }
+  #hw-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════════ -->
+<div id="header">
+  <div>
+    <h1>SMP & Mutex Simulator</h1>
+    <div class="subtitle">Symmetric Multiprocessing · Hardware Lock Visualization</div>
+  </div>
+  <div class="header-right">
+    <div class="fps-badge" id="fps-display">60 FPS</div>
+    <div class="status-led"></div>
+  </div>
+</div>
+
+<!-- ═══ MAIN ═════════════════════════════════════════════════════ -->
+<div id="main">
+  <!-- ── Control Panel ─────────────────────────────────────────── -->
+  <div id="panel">
+
+    <!-- Hardware Controls -->
+    <div class="panel-section">
+      <div class="section-title"><span class="dot"></span>Hardware Controls</div>
+
+      <div class="control-row">
+        <div class="control-label">
+          Mutex Lock
+          <small>Hardware synchronization gate</small>
+        </div>
+        <label class="switch" id="mutex-switch">
+          <input type="checkbox" id="mutex-toggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="control-row">
+        <div class="control-label">
+          Chaos Mode
+          <small>Force all cores to fire simultaneously</small>
+        </div>
+        <label class="switch danger" id="chaos-switch">
+          <input type="checkbox" id="chaos-toggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="control-row">
+        <div class="control-label">
+          Time Dilation
+          <small>5× slow-motion for analysis</small>
+        </div>
+        <label class="switch" id="slowmo-switch">
+          <input type="checkbox" id="slowmo-toggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="control-label">Active Cores</span>
+          <span class="slider-value" id="core-count-display">4</span>
+        </div>
+        <input type="range" id="core-slider" min="1" max="4" value="4">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn primary" id="btn-reset" title="Reset all counters and state">⟲ Reset</button>
+        <button class="btn" id="btn-pause" title="Pause / Resume simulation">⏸ Pause</button>
+      </div>
+    </div>
+
+    <!-- Telemetry -->
+    <div class="panel-section">
+      <div class="section-title"><span class="dot"></span>Live Telemetry</div>
+      <div class="tele-grid">
+        <div class="tele-card cyan">
+          <div class="tele-label">Expected Ops</div>
+          <div class="tele-value" id="tele-expected">0</div>
+        </div>
+        <div class="tele-card green">
+          <div class="tele-label">Successful Writes</div>
+          <div class="tele-value success-val" id="tele-success">0</div>
+        </div>
+        <div class="tele-card red">
+          <div class="tele-label">Data Collisions</div>
+          <div class="tele-value collision-val" id="tele-collisions">0</div>
+        </div>
+        <div class="tele-card yellow">
+          <div class="tele-label">Throughput</div>
+          <div class="tele-value" id="tele-throughput">0/s</div>
+        </div>
+        <div class="tele-card full cyan">
+          <div class="tele-label">Collision Rate</div>
+          <div class="tele-value" id="tele-collision-rate" style="font-size:16px;">0.0%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Core Status -->
+    <div class="panel-section">
+      <div class="section-title"><span class="dot"></span>Core Status</div>
+      <div class="core-status-list" id="core-status-list">
+        <div class="core-status-card active" data-core="0">
+          <div class="led" style="background:#00b4ff;box-shadow:0 0 6px #00b4ff"></div>
+          <span class="core-name" style="color:#00b4ff">CORE 1</span>
+          <span class="core-state" style="color:#00b4ff">IDLE</span>
+        </div>
+        <div class="core-status-card active" data-core="1">
+          <div class="led" style="background:#00ff88;box-shadow:0 0 6px #00ff88"></div>
+          <span class="core-name" style="color:#00ff88">CORE 2</span>
+          <span class="core-state" style="color:#00ff88">IDLE</span>
+        </div>
+        <div class="core-status-card active" data-core="2">
+          <div class="led" style="background:#b44dff;box-shadow:0 0 6px #b44dff"></div>
+          <span class="core-name" style="color:#b44dff">CORE 3</span>
+          <span class="core-state" style="color:#b44dff">IDLE</span>
+        </div>
+        <div class="core-status-card active" data-core="3">
+          <div class="led" style="background:#ff6b1a;box-shadow:0 0 6px #ff6b1a"></div>
+          <span class="core-name" style="color:#ff6b1a">CORE 4</span>
+          <span class="core-state" style="color:#ff6b1a">IDLE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="panel-section log-container">
+      <div class="section-title"><span class="dot"></span>Event Log</div>
+      <div id="event-log"></div>
+    </div>
+  </div>
+
+  <!-- ── Canvas ────────────────────────────────────────────────── -->
+  <div id="canvas-wrapper">
+    <canvas id="hw-canvas"></canvas>
+  </div>
+</div>
+
+<script>
+// ═════════════════════════════════════════════════════════════════════════
+//  SMP & MUTEX HARDWARE SIMULATOR  —  Cyberpunk Edition
+//  Pure vanilla JS + Canvas2D, 60 FPS animation
+// ═════════════════════════════════════════════════════════════════════════
+
+(() => {
+  "use strict";
+
+  // ── DOM refs ──────────────────────────────────────────────────────────
+  const canvas       = document.getElementById("hw-canvas");
+  const ctx          = canvas.getContext("2d");
+  const wrapper      = document.getElementById("canvas-wrapper");
+  const fpsDisplay   = document.getElementById("fps-display");
+  const mutexToggle  = document.getElementById("mutex-toggle");
+  const chaosToggle  = document.getElementById("chaos-toggle");
+  const slowmoToggle = document.getElementById("slowmo-toggle");
+  const coreSlider   = document.getElementById("core-slider");
+  const coreCountDisp = document.getElementById("core-count-display");
+  const btnReset     = document.getElementById("btn-reset");
+  const btnPause     = document.getElementById("btn-pause");
+  const teleExpected   = document.getElementById("tele-expected");
+  const teleSuccess    = document.getElementById("tele-success");
+  const teleCollisions = document.getElementById("tele-collisions");
+  const teleThroughput = document.getElementById("tele-throughput");
+  const teleCollRate   = document.getElementById("tele-collision-rate");
+  const eventLog       = document.getElementById("event-log");
+  const coreStatusCards = document.querySelectorAll(".core-status-card");
+
+  // ── Config ────────────────────────────────────────────────────────────
+  const CORE_COLORS = [
+    { r: 0, g: 180, b: 255, hex: "#00b4ff", name: "CORE 1" },    // Neon Blue
+    { r: 0, g: 255, b: 136, hex: "#00ff88", name: "CORE 2" },    // Emerald Green
+    { r: 180, g: 77, b: 255, hex: "#b44dff", name: "CORE 3" },   // Cyberpunk Purple
+    { r: 255, g: 107, b: 26, hex: "#ff6b1a", name: "CORE 4" },   // Burnt Orange
+  ];
+
+  const VAULT_RADIUS        = 68;
+  const MUTEX_GATE_RADIUS   = 120;
+  const CORE_SIZE           = 70;
+  const PACKET_RADIUS       = 10;
+  const TRACE_WIDTH         = 2;
+  const THINK_DURATION_MS   = 1000;   // 1 second "Check-then-Act" window
+  const SEND_INTERVAL_MS    = 1800;   // how often each core sends a packet
+  const CHAOS_INTERVAL_MS   = 400;    // simultaneous burst in chaos mode
+  const SLOW_MO_FACTOR      = 5;
+
+  // ── State ─────────────────────────────────────────────────────────────
+  let W = 0, H = 0, CX = 0, CY = 0;
+  let dpr = 1;
+  let paused       = false;
+  let mutexEnabled = true;
+  let chaosMode    = false;
+  let slowMo       = false;
+  let activeCores  = 4;
+  let expectedOps  = 0;
+  let successWrites = 0;
+  let collisionCount = 0;
+
+  // Throughput tracking
+  let recentWrites   = [];   // timestamps of recent writes
+  let throughputVal  = 0;
+
+  // Animation state
+  let prevTimestamp = 0;
+  let simTime       = 0;     // simulation time (affected by slow-mo)
+  let fpsFrames     = 0;
+  let fpsLast       = 0;
+  let fpsVal        = 60;
+
+  // Core state
+  const cores = [];
+  // Packets in flight
+  let packets = [];
+  // Packets inside the mutex gate (thinking)
+  let packetsInsideGate = [];
+  // Vault glitch state
+  let vaultGlitch     = 0;      // remaining glitch ms
+  let vaultCorruption = false;
+
+  // Background particles
+  let bgParticles = [];
+  // Circuit trace pulse
+  let tracePulseOffset = 0;
+
+  // Log
+  const MAX_LOG = 80;
+  let logEntries = [];
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  RESIZE
+  // ═══════════════════════════════════════════════════════════════════════
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    const rect = wrapper.getBoundingClientRect();
+    W = rect.width;
+    H = rect.height;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width  = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    CX = W / 2;
+    CY = H / 2;
+    layoutCores();
+    initBgParticles();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  CORE LAYOUT — 4 cores around the center
+  // ═══════════════════════════════════════════════════════════════════════
+  function layoutCores() {
+    cores.length = 0;
+    const orbitR = Math.min(W, H) * 0.34;
+    for (let i = 0; i < 4; i++) {
+      const angle = -Math.PI/2 + (Math.PI * 2) * i / 4;  // top, right, bottom, left
+      cores.push({
+        id: i,
+        x: CX + Math.cos(angle) * orbitR,
+        y: CY + Math.sin(angle) * orbitR,
+        angle: angle,
+        color: CORE_COLORS[i],
+        state: "IDLE",        // IDLE, SENDING, WAITING
+        lastSend: -99999,
+        queueCount: 0,
+      });
+    }
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  BACKGROUND PARTICLES (floating circuit dots)
+  // ═══════════════════════════════════════════════════════════════════════
+  function initBgParticles() {
+    bgParticles = [];
+    const count = Math.floor(W * H / 6000);
+    for (let i = 0; i < count; i++) {
+      bgParticles.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        vx: (Math.random() - 0.5) * 0.15,
+        vy: (Math.random() - 0.5) * 0.15,
+        r: Math.random() * 1.5 + 0.3,
+        alpha: Math.random() * 0.3 + 0.05,
+      });
+    }
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  LOGGING
+  // ═══════════════════════════════════════════════════════════════════════
+  function addLog(msg, cls = "") {
+    const now = new Date();
+    const ts = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}.${(now.getMilliseconds()/10|0).toString().padStart(2,'0')}`;
+    logEntries.push({ msg, cls, ts });
+    if (logEntries.length > MAX_LOG) logEntries.shift();
+    renderLog();
+  }
+
+  function renderLog() {
+    eventLog.innerHTML = logEntries.map(e =>
+      `<div class="log-entry ${e.cls}"><span class="log-time">[${e.ts}]</span> ${e.msg}</div>`
+    ).join("");
+    eventLog.scrollTop = eventLog.scrollHeight;
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  UPDATE TELEMETRY
+  // ═══════════════════════════════════════════════════════════════════════
+  function updateTelemetry() {
+    teleExpected.textContent   = expectedOps;
+    teleSuccess.textContent    = successWrites;
+    teleCollisions.textContent = collisionCount;
+    teleThroughput.textContent = throughputVal.toFixed(1) + "/s";
+    const rate = expectedOps > 0 ? (collisionCount / expectedOps * 100) : 0;
+    teleCollRate.textContent = rate.toFixed(1) + "%";
+    teleCollRate.style.color = rate > 10 ? "var(--neon-red)" : rate > 0 ? "var(--neon-yellow)" : "var(--neon-cyan)";
+  }
+
+  function updateCoreStatusCards() {
+    coreStatusCards.forEach((card, i) => {
+      const active = i < activeCores;
+      card.classList.toggle("active", active);
+      const led   = card.querySelector(".led");
+      const state = card.querySelector(".core-state");
+      const c = CORE_COLORS[i];
+      if (!active) {
+        led.style.background = "#2a3040";
+        led.style.boxShadow = "none";
+        state.textContent = "OFF";
+        state.style.color = "#3a4560";
+      } else {
+        const cs = cores[i] ? cores[i].state : "IDLE";
+        led.style.background = c.hex;
+        led.style.boxShadow = `0 0 6px ${c.hex}`;
+        state.textContent = cs;
+        state.style.color = cs === "WAITING" ? "#ffe44d" : cs === "SENDING" ? c.hex : "#556b8a";
+      }
+    });
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  PACKET SPAWNING
+  // ═══════════════════════════════════════════════════════════════════════
+  function trySpawnPackets(dt) {
+    const interval = chaosMode ? CHAOS_INTERVAL_MS : SEND_INTERVAL_MS;
+    const timeMul  = slowMo ? SLOW_MO_FACTOR : 1;
+
+    for (let i = 0; i < activeCores; i++) {
+      const core = cores[i];
+      if (simTime - core.lastSend >= interval * timeMul) {
+        core.lastSend = simTime;
+        expectedOps++;
+        spawnPacket(core);
+      }
+    }
+  }
+
+  function spawnPacket(core) {
+    const c = core.color;
+    const angle = Math.atan2(CY - core.y, CX - core.x);
+    packets.push({
+      coreId:     core.id,
+      x:          core.x,
+      y:          core.y,
+      targetX:    CX,
+      targetY:    CY,
+      angle:      angle,
+      color:      c,
+      state:      "TRAVEL",        // TRAVEL → GATE_WAIT → THINKING → WRITE → DONE
+      progress:   0,               // 0 → 1 along the trace
+      thinkStart: 0,
+      trail:      [],
+      alive:      true,
+      gateX:      0,               // position when stopped at gate
+      gateY:      0,
+    });
+    core.state = "SENDING";
+    addLog(`${c.name} → Packet dispatched`, "info");
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  PACKET PHYSICS
+  // ═══════════════════════════════════════════════════════════════════════
+  function updatePackets(dt) {
+    const timeMul = slowMo ? SLOW_MO_FACTOR : 1;
+    const travelSpeed = 0.4 / timeMul;          // progress per second
+    const thinkDur    = THINK_DURATION_MS * timeMul;
+
+    for (const pkt of packets) {
+      if (!pkt.alive) continue;
+
+      if (pkt.state === "TRAVEL") {
+        pkt.progress += travelSpeed * (dt / 1000);
+        const core = cores[pkt.coreId];
+        const dx = CX - core.x, dy = CY - core.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const gateStop = 1 - (MUTEX_GATE_RADIUS / dist);
+
+        pkt.x = core.x + dx * pkt.progress;
+        pkt.y = core.y + dy * pkt.progress;
+        pkt.trail.push({ x: pkt.x, y: pkt.y, t: simTime });
+        if (pkt.trail.length > 20) pkt.trail.shift();
+
+        if (pkt.progress >= gateStop) {
+          pkt.progress = gateStop;
+          pkt.x = core.x + dx * gateStop;
+          pkt.y = core.y + dy * gateStop;
+          pkt.gateX = pkt.x;
+          pkt.gateY = pkt.y;
+
+          // Mutex check
+          if (mutexEnabled) {
+            const insideCount = packetsInsideGate.length;
+            if (insideCount === 0) {
+              // Enter the gate
+              pkt.state = "THINKING";
+              pkt.thinkStart = simTime;
+              packetsInsideGate.push(pkt);
+              cores[pkt.coreId].state = "SENDING";
+              addLog(`${pkt.color.name} → Entered gate. THINKING (Check)…`, "warn");
+            } else {
+              pkt.state = "GATE_WAIT";
+              cores[pkt.coreId].state = "WAITING";
+              cores[pkt.coreId].queueCount++;
+              addLog(`${pkt.color.name} → BLOCKED at mutex gate`, "warn");
+            }
+          } else {
+            // No mutex — enter freely
+            pkt.state = "THINKING";
+            pkt.thinkStart = simTime;
+            packetsInsideGate.push(pkt);
+            cores[pkt.coreId].state = "SENDING";
+            addLog(`${pkt.color.name} → No lock! Entering memory freely…`, "warn");
+          }
+        }
+      }
+
+      else if (pkt.state === "GATE_WAIT") {
+        // Check if the gate is now free
+        if (mutexEnabled && packetsInsideGate.length === 0) {
+          pkt.state = "THINKING";
+          pkt.thinkStart = simTime;
+          packetsInsideGate.push(pkt);
+          cores[pkt.coreId].state = "SENDING";
+          addLog(`${pkt.color.name} → Gate opened. THINKING (Check)…`, "warn");
+        }
+      }
+
+      else if (pkt.state === "THINKING") {
+        // Move toward the vault center during thinking
+        const thinkProg = Math.min((simTime - pkt.thinkStart) / thinkDur, 1);
+        const core = cores[pkt.coreId];
+        const dx = CX - core.x, dy = CY - core.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const gateStop = 1 - (MUTEX_GATE_RADIUS / dist);
+        const finalProg = gateStop + (1 - gateStop) * thinkProg * 0.8;
+        pkt.x = core.x + dx * finalProg;
+        pkt.y = core.y + dy * finalProg;
+
+        if (thinkProg >= 1) {
+          // ═══ WRITE ATTEMPT ═══
+          // Check for collision: if another packet is ALSO thinking right now
+          const thinkingNow = packetsInsideGate.filter(p => p !== pkt && p.state === "THINKING");
+          if (thinkingNow.length > 0 && !mutexEnabled) {
+            // COLLISION!
+            collisionCount++;
+            vaultGlitch = 800 * (slowMo ? SLOW_MO_FACTOR : 1);
+            vaultCorruption = true;
+            addLog(`⚠ COLLISION! ${pkt.color.name} + ${thinkingNow.map(p=>p.color.name).join(", ")} — DATA CORRUPTED!`, "collision");
+          } else {
+            successWrites++;
+            addLog(`${pkt.color.name} → Write successful ✓`, "success");
+          }
+
+          pkt.state = "DONE";
+          pkt.alive = false;
+          cores[pkt.coreId].state = "IDLE";
+
+          // Remove from gate
+          const gi = packetsInsideGate.indexOf(pkt);
+          if (gi >= 0) packetsInsideGate.splice(gi, 1);
+
+          recentWrites.push(performance.now());
+          updateTelemetry();
+        }
+      }
+    }
+
+    // Collision detection for simultaneous thinkers (no mutex)
+    if (!mutexEnabled && packetsInsideGate.length >= 2) {
+      const thinkers = packetsInsideGate.filter(p => p.state === "THINKING");
+      if (thinkers.length >= 2) {
+        // Check if any pair has overlapping think periods
+        // Flash the vault
+        if (vaultGlitch <= 0) {
+          vaultGlitch = 600 * (slowMo ? SLOW_MO_FACTOR : 1);
+          vaultCorruption = true;
+        }
+      }
+    }
+
+    // Purge dead packets
+    packets = packets.filter(p => p.alive || p.state === "DONE");
+    // Fully remove DONE packets after a beat
+    packets = packets.filter(p => p.alive);
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  DRAWING — Background
+  // ═══════════════════════════════════════════════════════════════════════
+  function drawBackground(dt) {
+    // Solid fill
+    ctx.fillStyle = "#0b0f19";
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid pattern
+    ctx.strokeStyle = "rgba(30, 42, 66, 0.3)";
+    ctx.lineWidth = 0.5;
+    const gridSize = 40;
+    for (let x = 0; x < W; x += gridSize) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let y = 0; y < H; y += gridSize) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+
+    // Floating particles
+    for (const p of bgParticles) {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0, 255, 229, ${p.alpha})`;
+      ctx.fill();
+    }
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  DRAWING — Circuit Traces (Data Buses)
+  // ═══════════════════════════════════════════════════════════════════════
+  function drawTraces() {
+    tracePulseOffset = (simTime / 600) % 20;
+
+    for (let i = 0; i < activeCores; i++) {
+      const core = cores[i];
+      const c = core.color;
+
+      ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, 0.15)`;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(core.x, core.y);
+      ctx.lineTo(CX, CY);
+      ctx.stroke();
+
+      // Pulsing dash overlay
+      ctx.setLineDash([4, 16]);
+      ctx.lineDashOffset = -tracePulseOffset;
+      ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, 0.4)`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(core.x, core.y);
+      ctx.lineTo(CX, CY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineDashOffset = 0;
+    }
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  DRAWING — CPU Cores (Microchip Nodes)
+  // ═══════════════════════════════════════════════════════════════════════
+  function drawCores() {
+    for (let i = 0; i < 4; i++) {
+      const core = cores[i];
+      const c = core.color;
+      const active = i < activeCores;
+      const s = CORE_SIZE;
+      const hs = s / 2;
+      const cx = core.x, cy = core.y;
+
+      // Outer glow
+      if (active) {
+        const grd = ctx.createRadialGradient(cx, cy, hs * 0.5, cx, cy, hs * 2);
+        grd.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, 0.12)`);
+        grd.addColorStop(1, "transparent");
+        ctx.fillStyle = grd;
+        ctx.fillRect(cx - hs*2, cy - hs*2, s*2, s*2);
+      }
+
+      // Chip body
+      ctx.fillStyle = active ? "#0f1424" : "#0a0e18";
+      ctx.strokeStyle = active ? `rgba(${c.r}, ${c.g}, ${c.b}, 0.6)` : "#1a2030";
+      ctx.lineWidth = active ? 2 : 1;
+      roundRect(ctx, cx - hs, cy - hs, s, s, 8, true, true);
+
+      // Pin traces (decorative)
+      const pinLen = 10;
+      const pinCount = 4;
+      ctx.strokeStyle = active ? `rgba(${c.r}, ${c.g}, ${c.b}, 0.3)` : "#151a28";
+      ctx.lineWidth = 1.5;
+      for (let p = 0; p < pinCount; p++) {
+        const offset = -hs + s * (p + 0.5) / pinCount;
+        // Top
+        ctx.beginPath(); ctx.moveTo(cx + offset, cy - hs); ctx.lineTo(cx + offset, cy - hs - pinLen); ctx.stroke();
+        // Bottom
+        ctx.beginPath(); ctx.moveTo(cx + offset, cy + hs); ctx.lineTo(cx + offset, cy + hs + pinLen); ctx.stroke();
+        // Left
+        ctx.beginPath(); ctx.moveTo(cx - hs, cy + offset); ctx.lineTo(cx - hs - pinLen, cy + offset); ctx.stroke();
+        // Right
+        ctx.beginPath(); ctx.moveTo(cx + hs, cy + offset); ctx.lineTo(cx + hs + pinLen, cy + offset); ctx.stroke();
+      }
+
+      // Core label
+      ctx.fillStyle = active ? c.hex : "#2a3450";
+      ctx.font = "bold 11px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(c.name, cx, cy - 6);
+
+      // State label
+      ctx.font = "9px 'Share Tech Mono', monospace";
+      ctx.fillStyle = active ? (core.state === "WAITING" ? "#ffe44d" : "rgba(200,210,230,0.6)") : "#1d2540";
+      ctx.fillText(active ? core.state : "OFF", cx, cy + 10);
+
+      // Waiting indicator
+      if (core.state === "WAITING") {
+        const p2 = 0.5 + 0.5 * Math.sin(simTime / 150);
+        ctx.strokeStyle = `rgba(255, 228, 77, ${0.3 + p2 * 0.5})`;
+        ctx.lineWidth = 2;
+        roundRect(ctx, cx - hs - 3, cy - hs - 3, s + 6, s + 6, 10, false, true);
+      }
+    }
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  DRAWING — Memory Vault & Mutex Gate
+  // ═══════════════════════════════════════════════════════════════════════
+  function drawVaultAndGate() {
+    const timeMul = slowMo ? SLOW_MO_FACTOR : 1;
+
+    // ── Mutex Gate (forcefield ring) ─────────────────────────────────
+    if (mutexEnabled) {
+      const gateAlpha = 0.25 + 0.15 * Math.sin(simTime / 300);
+      const hasWaiter = packets.some(p => p.state === "GATE_WAIT");
+      const gateColor = packetsInsideGate.length > 0
+        ? `rgba(0, 255, 136, ${gateAlpha})`     // Green — locked active
+        : hasWaiter
+          ? `rgba(255, 228, 77, ${gateAlpha})`   // Yellow — queue waiting
+          : `rgba(0, 255, 229, ${gateAlpha * 0.5})`; // Cyan — idle
+
+      ctx.setLineDash([12, 8]);
+      ctx.lineDashOffset = -(simTime / 80);
+      ctx.strokeStyle = gateColor;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(CX, CY, MUTEX_GATE_RADIUS, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Gate glow
+      const grd = ctx.createRadialGradient(CX, CY, MUTEX_GATE_RADIUS - 10, CX, CY, MUTEX_GATE_RADIUS + 20);
+      grd.addColorStop(0, `rgba(0, 255, 136, ${gateAlpha * 0.15})`);
+      grd.addColorStop(1, "transparent");
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(CX, CY, MUTEX_GATE_RADIUS + 20, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Label
+      ctx.font = "bold 9px Orbitron, monospace";
+      ctx.fillStyle = `rgba(0, 255, 136, ${0.4 + gateAlpha})`;
+      ctx.textAlign = "center";
+      ctx.fillText("MUTEX GATE", CX, CY - MUTEX_GATE_RADIUS - 10);
+      ctx.fillStyle = packetsInsideGate.length > 0 ? "rgba(0,255,136,0.8)" : "rgba(0,255,229,0.4)";
+      ctx.font = "7px 'Share Tech Mono', monospace";
+      ctx.fillText(packetsInsideGate.length > 0 ? "▶ LOCKED" : "○ OPEN", CX, CY - MUTEX_GATE_RADIUS + 4);
+    } else {
+      // Broken gate
+      const flashAlpha = 0.15 + 0.1 * Math.sin(simTime / 100);
+      ctx.setLineDash([3, 15]);
+      ctx.lineDashOffset = -(simTime / 40);
+      ctx.strokeStyle = `rgba(255, 34, 68, ${flashAlpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(CX, CY, MUTEX_GATE_RADIUS, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.font = "bold 9px Orbitron, monospace";
+      ctx.fillStyle = `rgba(255, 34, 68, ${0.5 + flashAlpha})`;
+      ctx.textAlign = "center";
+      ctx.fillText("⚠ NO LOCK — RACE CONDITION", CX, CY - MUTEX_GATE_RADIUS - 10);
+    }
+
+    // ── Memory Vault ─────────────────────────────────────────────────
+    const glitching = vaultGlitch > 0;
+
+    // Outer glow
+    const glowColor = glitching
+      ? `rgba(255, 34, 68, ${0.2 + 0.15 * Math.sin(simTime / 30)})`
+      : `rgba(0, 255, 229, 0.08)`;
+    const grd2 = ctx.createRadialGradient(CX, CY, VAULT_RADIUS * 0.3, CX, CY, VAULT_RADIUS * 1.5);
+    grd2.addColorStop(0, glowColor);
+    grd2.addColorStop(1, "transparent");
+    ctx.fillStyle = grd2;
+    ctx.beginPath();
+    ctx.arc(CX, CY, VAULT_RADIUS * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Vault body
+    if (glitching) {
+      const flick = Math.sin(simTime / 25) > 0;
+      ctx.fillStyle = flick ? "#2a0a10" : "#1a0508";
+      ctx.strokeStyle = flick ? "#ff2244" : "#aa1530";
+    } else {
+      ctx.fillStyle = "#0d1525";
+      ctx.strokeStyle = "rgba(0, 255, 229, 0.3)";
+    }
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(CX, CY, VAULT_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner ring
+    ctx.strokeStyle = glitching ? "rgba(255, 34, 68, 0.3)" : "rgba(0, 255, 229, 0.1)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(CX, CY, VAULT_RADIUS * 0.65, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Data icon (inner dot pattern)
+    const dataPhase = simTime / 800;
+    for (let i = 0; i < 6; i++) {
+      const a = dataPhase + (Math.PI * 2) * i / 6;
+      const dr = VAULT_RADIUS * 0.35;
+      const dx = CX + Math.cos(a) * dr;
+      const dy = CY + Math.sin(a) * dr;
+      ctx.fillStyle = glitching ? "rgba(255, 34, 68, 0.5)" : "rgba(0, 255, 229, 0.25)";
+      ctx.beginPath();
+      ctx.arc(dx, dy, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Label
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    if (glitching && vaultCorruption) {
+      ctx.font = "bold 13px Orbitron, monospace";
+      ctx.fillStyle = "#ff2244";
+      ctx.shadowColor = "#ff2244";
+      ctx.shadowBlur = 20;
+      ctx.fillText("CORRUPTION", CX, CY - 4);
+      ctx.shadowBlur = 0;
+      ctx.font = "9px 'Share Tech Mono', monospace";
+      ctx.fillStyle = "rgba(255, 100, 100, 0.8)";
+      ctx.fillText("DATA INTEGRITY FAILURE", CX, CY + 14);
+    } else {
+      ctx.font = "bold 12px Orbitron, monospace";
+      ctx.fillStyle = "rgba(0, 255, 229, 0.7)";
+      ctx.fillText("SHARED", CX, CY - 8);
+      ctx.fillText("MEMORY", CX, CY + 8);
+      ctx.font = "8px 'Share Tech Mono', monospace";
+      ctx.fillStyle = "rgba(0, 255, 229, 0.3)";
+      ctx.fillText("VAULT", CX, CY + 24);
+    }
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  DRAWING — Packets
+  // ═══════════════════════════════════════════════════════════════════════
+  function drawPackets() {
+    for (const pkt of packets) {
+      if (!pkt.alive) continue;
+      const c = pkt.color;
+
+      // Trail
+      if (pkt.trail.length > 1) {
+        for (let t = 1; t < pkt.trail.length; t++) {
+          const alpha = t / pkt.trail.length * 0.3;
+          ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(pkt.trail[t-1].x, pkt.trail[t-1].y);
+          ctx.lineTo(pkt.trail[t].x, pkt.trail[t].y);
+          ctx.stroke();
+        }
+      }
+
+      // Packet body
+      let pktColor, glowCol, glowSize;
+      if (pkt.state === "THINKING") {
+        // Pulsing YELLOW during Check-then-Act
+        const pulse = 0.5 + 0.5 * Math.sin(simTime / 80);
+        pktColor = `rgba(255, 228, 77, ${0.7 + pulse * 0.3})`;
+        glowCol  = `rgba(255, 228, 77, ${0.3 + pulse * 0.4})`;
+        glowSize = 25 + pulse * 10;
+      } else if (pkt.state === "GATE_WAIT") {
+        const pulse = 0.5 + 0.5 * Math.sin(simTime / 200);
+        pktColor = `rgba(${c.r}, ${c.g}, ${c.b}, ${0.5 + pulse * 0.3})`;
+        glowCol  = `rgba(${c.r}, ${c.g}, ${c.b}, 0.15)`;
+        glowSize = 15;
+      } else {
+        pktColor = c.hex;
+        glowCol  = `rgba(${c.r}, ${c.g}, ${c.b}, 0.25)`;
+        glowSize = 18;
+      }
+
+      // Glow
+      const grd = ctx.createRadialGradient(pkt.x, pkt.y, 0, pkt.x, pkt.y, glowSize);
+      grd.addColorStop(0, glowCol);
+      grd.addColorStop(1, "transparent");
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(pkt.x, pkt.y, glowSize, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Core
+      ctx.fillStyle = pktColor;
+      ctx.beginPath();
+      ctx.arc(pkt.x, pkt.y, PACKET_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Inner dot
+      ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+      ctx.beginPath();
+      ctx.arc(pkt.x, pkt.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // THINKING label
+      if (pkt.state === "THINKING") {
+        ctx.font = "bold 8px Orbitron, monospace";
+        ctx.fillStyle = "#ffe44d";
+        ctx.textAlign = "center";
+        ctx.fillText("CHECK", pkt.x, pkt.y - 18);
+      }
+
+      // WAITING label
+      if (pkt.state === "GATE_WAIT") {
+        ctx.font = "7px 'Share Tech Mono', monospace";
+        ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, 0.6)`;
+        ctx.textAlign = "center";
+        ctx.fillText("WAIT", pkt.x, pkt.y - 16);
+      }
+    }
+
+    // Draw queue count outside gate
+    if (mutexEnabled) {
+      const waitCount = packets.filter(p => p.state === "GATE_WAIT").length;
+      if (waitCount > 0) {
+        ctx.font = "bold 10px Orbitron, monospace";
+        ctx.fillStyle = "#ffe44d";
+        ctx.textAlign = "center";
+        ctx.fillText(`QUEUE: ${waitCount}`, CX, CY + MUTEX_GATE_RADIUS + 20);
+      }
+    }
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  DRAWING — HUD overlay labels
+  // ═══════════════════════════════════════════════════════════════════════
+  function drawHUD() {
+    // Mode badge — top-left of canvas
+    const mode = mutexEnabled ? "MUTEX: ON" : "MUTEX: OFF";
+    const modeCol = mutexEnabled ? "rgba(0,255,136,0.8)" : "rgba(255,34,68,0.8)";
+    ctx.font = "bold 11px Orbitron, monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = modeCol;
+    ctx.fillText(mode, 16, 24);
+
+    if (chaosMode) {
+      ctx.fillStyle = "rgba(255, 34, 68, 0.8)";
+      ctx.fillText("⚡ CHAOS", 16, 42);
+    }
+
+    if (slowMo) {
+      ctx.fillStyle = "rgba(255, 228, 77, 0.8)";
+      ctx.fillText("◷ SLOW ×5", 16, chaosMode ? 60 : 42);
+    }
+
+    if (paused) {
+      ctx.font = "bold 20px Orbitron, monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(255, 228, 77, 0.6)";
+      ctx.fillText("⏸ PAUSED", CX, H - 30);
+    }
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  HELPER — Rounded Rectangle
+  // ═══════════════════════════════════════════════════════════════════════
+  function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  MAIN ANIMATION LOOP
+  // ═══════════════════════════════════════════════════════════════════════
+  function frame(timestamp) {
+    requestAnimationFrame(frame);
+
+    const rawDt = timestamp - prevTimestamp;
+    prevTimestamp = timestamp;
+    if (rawDt > 200) return;   // tab was hidden, skip
+
+    // FPS counter
+    fpsFrames++;
+    if (timestamp - fpsLast >= 500) {
+      fpsVal = Math.round(fpsFrames / ((timestamp - fpsLast) / 1000));
+      fpsDisplay.textContent = fpsVal + " FPS";
+      fpsFrames = 0;
+      fpsLast = timestamp;
+    }
+
+    // Throughput calc
+    const now = performance.now();
+    recentWrites = recentWrites.filter(t => now - t < 2000);
+    throughputVal = recentWrites.length / 2;
+
+    if (paused) {
+      // Still draw, just don't update physics
+      drawBackground(0);
+      drawTraces();
+      drawVaultAndGate();
+      drawCores();
+      drawPackets();
+      drawHUD();
+      return;
+    }
+
+    const dt = rawDt;
+    simTime += dt;
+
+    // Vault glitch decay
+    if (vaultGlitch > 0) {
+      vaultGlitch -= dt;
+      if (vaultGlitch <= 0) {
+        vaultGlitch = 0;
+        vaultCorruption = false;
+      }
+    }
+
+    // Spawn & update
+    trySpawnPackets(dt);
+    updatePackets(dt);
+    updateCoreStatusCards();
+    updateTelemetry();
+
+    // Draw
+    drawBackground(dt);
+    drawTraces();
+    drawVaultAndGate();
+    drawCores();
+    drawPackets();
+    drawHUD();
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  CONTROLS
+  // ═══════════════════════════════════════════════════════════════════════
+  mutexToggle.addEventListener("change", () => {
+    mutexEnabled = mutexToggle.checked;
+    addLog(mutexEnabled ? "Mutex ENABLED — hardware lock active" : "Mutex DISABLED — no synchronization!", mutexEnabled ? "success" : "collision");
+    // Release any waiting packets when mutex is turned off
+    if (!mutexEnabled) {
+      for (const pkt of packets) {
+        if (pkt.state === "GATE_WAIT") {
+          pkt.state = "THINKING";
+          pkt.thinkStart = simTime;
+          packetsInsideGate.push(pkt);
+          cores[pkt.coreId].state = "SENDING";
+        }
+      }
+    }
+  });
+
+  chaosToggle.addEventListener("change", () => {
+    chaosMode = chaosToggle.checked;
+    addLog(chaosMode ? "⚡ CHAOS MODE — simultaneous burst fire!" : "Chaos mode disabled", chaosMode ? "collision" : "info");
+  });
+
+  slowmoToggle.addEventListener("change", () => {
+    slowMo = slowmoToggle.checked;
+    addLog(slowMo ? "◷ Time dilation ×5 — observe the Check-then-Act window" : "Normal speed resumed", slowMo ? "warn" : "info");
+  });
+
+  coreSlider.addEventListener("input", () => {
+    activeCores = parseInt(coreSlider.value);
+    coreCountDisp.textContent = activeCores;
+    addLog(`Active cores set to ${activeCores}`, "info");
+    updateCoreStatusCards();
+  });
+
+  btnPause.addEventListener("click", () => {
+    paused = !paused;
+    btnPause.textContent = paused ? "▶ Play" : "⏸ Pause";
+    addLog(paused ? "Simulation PAUSED" : "Simulation RESUMED", "info");
+  });
+
+  btnReset.addEventListener("click", () => {
+    expectedOps = 0;
+    successWrites = 0;
+    collisionCount = 0;
+    recentWrites = [];
+    throughputVal = 0;
+    packets = [];
+    packetsInsideGate = [];
+    vaultGlitch = 0;
+    vaultCorruption = false;
+    for (const core of cores) {
+      core.state = "IDLE";
+      core.lastSend = -99999;
+      core.queueCount = 0;
+    }
+    logEntries = [];
+    renderLog();
+    updateTelemetry();
+    updateCoreStatusCards();
+    addLog("System RESET — all counters cleared", "info");
+  });
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  BOOT
+  // ═══════════════════════════════════════════════════════════════════════
+  window.addEventListener("resize", resize);
+  resize();
+  addLog("SMP Simulator v1.0 — Cyberpunk Edition online", "info");
+  addLog("Mutex gate ACTIVE — safe mode enabled", "success");
+  prevTimestamp = performance.now();
+  fpsLast = prevTimestamp;
+  requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
