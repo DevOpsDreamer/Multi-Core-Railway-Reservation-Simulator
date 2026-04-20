@@ -89,6 +89,18 @@
     transform: scale(1);
   }
 
+  /* Core-specific colors for Domain Decomposition */
+  .task.active.core-0-active { background: #3498db; box-shadow: 0 0 14px rgba(52,152,219,0.55); }
+  .task.active.core-1-active { background: #2ecc71; box-shadow: 0 0 14px rgba(46,204,113,0.55); }
+  .task.active.core-2-active { background: #e67e22; box-shadow: 0 0 14px rgba(230,126,34,0.55); }
+  .task.active.core-3-active { background: #e74c3c; box-shadow: 0 0 14px rgba(231,76,60,0.55); }
+  .task.active.core-4-active { background: #9b59b6; box-shadow: 0 0 14px rgba(155,89,182,0.55); }
+  .task.active.core-5-active { background: #34495e; box-shadow: 0 0 14px rgba(52,73,94,0.55); }
+  .task.active.core-6-active { background: #1abc9c; box-shadow: 0 0 14px rgba(26,188,156,0.55); }
+  .task.active.core-7-active { background: #f1c40f; box-shadow: 0 0 14px rgba(241,196,15,0.55); }
+  .task.active.core-n-active { background: #ecf0f1; box-shadow: 0 0 14px rgba(236,240,241,0.55); }
+
+
   /* ── Progress ───────────────────────────────────────────── */
   .progress-row {
     display: flex; align-items: center; gap: 12px; flex-shrink: 0;
@@ -361,7 +373,7 @@
     }
 
     // Commit previous active cells → done
-    activeCells.forEach(el => { el.classList.remove('active'); el.classList.add('done'); });
+    activeCells.forEach(el => { el.className = 'task done'; });
     activeCells = [];
 
     // All batches sent and committed?
@@ -370,7 +382,7 @@
       dispTime.textContent = ((now - startTs) / 1000).toFixed(2);
       isRunning = false;
       setStatus(
-        `✓ COMPLETE  —  ${cores} core${cores > 1 ? 's' : ''}  ·  ${TOTAL} tasks  ·  ${((now - startTs) / 1000).toFixed(2)}s`,
+        `✓ COMPLETE  —  Domain Decomposition: 128 tasks split across ${cores} core${cores > 1 ? 's' : ''}`,
         'done'
       );
       btnStart.textContent = '▶ Run Again';
@@ -379,17 +391,28 @@
       return;
     }
 
-    // Fire next batch (yellow)
+    // Fire next batch (Segmented Domain Decomposition)
     const cores = getCores();
-    const from  = batchIndex * cores;
-    const to    = Math.min(from + cores, TOTAL);
-    for (let i = from; i < to; i++) {
-      tasks[i].classList.add('active');
-      activeCells.push(tasks[i]);
+    const tasksPerCore = Math.ceil(TOTAL / cores);
+    let tasksFiredThisBatch = 0;
+
+    for (let c = 0; c < cores; c++) {
+      const taskIdx = c * tasksPerCore + batchIndex;
+      const limit = Math.min((c + 1) * tasksPerCore, TOTAL);
+      if (taskIdx < limit) {
+        tasks[taskIdx].classList.add('active');
+        
+        // Add color coded class if available (can add CSS later, falls back to active color if undefined)
+        tasks[taskIdx].classList.add(`core-${c}-active`);
+        
+        activeCells.push(tasks[taskIdx]);
+        tasksFiredThisBatch++;
+      }
     }
-    committed  = to;
-    setProgress(to);
-    setStatus(`⟳  Batch ${batchIndex + 1} / ${batchCount}  —  tasks ${from + 1}–${to}`, 'run');
+    
+    committed += tasksFiredThisBatch;
+    setProgress(committed);
+    setStatus(`⟳  Domain Decomposition: ${TOTAL} tasks split across ${cores} cores (Batch ${batchIndex + 1} / ${batchCount})`, 'run');
 
     batchIndex++;
     nextAt = now + batchDelay;
